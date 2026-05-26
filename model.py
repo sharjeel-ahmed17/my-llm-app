@@ -3,10 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 block_size = 128
-n_embd  = 128
-n_head  = 4
-n_layer = 4
-dropout = 0.1
+n_embd     = 128
+n_head     = 4
+n_layer    = 4
+dropout    = 0.1
 
 class Head(nn.Module):
     def __init__(self, head_size):
@@ -19,10 +19,12 @@ class Head(nn.Module):
 
     def forward(self, x):
         B, T, C = x.shape
-        k = self.key(x);   q = self.query(x)
-        wei = q @ k.transpose(-2,-1) * C**-0.5
-        wei = wei.masked_fill(self.tril[:T,:T]==0, float('-inf'))
-        wei = F.softmax(wei, dim=-1);  wei = self.drop(wei)
+        k = self.key(x)
+        q = self.query(x)
+        wei = q @ k.transpose(-2, -1) * C**-0.5
+        wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
+        wei = F.softmax(wei, dim=-1)
+        wei = self.drop(wei)
         return wei @ self.value(x)
 
 class MultiHeadAttention(nn.Module):
@@ -31,25 +33,32 @@ class MultiHeadAttention(nn.Module):
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
         self.proj  = nn.Linear(n_embd, n_embd)
         self.drop  = nn.Dropout(dropout)
+
     def forward(self, x):
-        return self.drop(self.proj(torch.cat([h(x) for h in self.heads], dim=-1)))
+        out = torch.cat([h(x) for h in self.heads], dim=-1)
+        return self.drop(self.proj(out))
 
 class FeedForward(nn.Module):
     def __init__(self):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(n_embd, 4*n_embd), nn.ReLU(),
-            nn.Linear(4*n_embd, n_embd), nn.Dropout(dropout))
-    def forward(self, x): return self.net(x)
+            nn.Linear(n_embd, 4 * n_embd),
+            nn.ReLU(),
+            nn.Linear(4 * n_embd, n_embd),
+            nn.Dropout(dropout),
+        )
+    def forward(self, x):
+        return self.net(x)
 
 class Block(nn.Module):
-    def __init__(self, vocab_size):
+    def __init__(self):
         super().__init__()
-        hs = n_embd // n_head
-        self.sa  = MultiHeadAttention(n_head, hs)
+        head_size = n_embd // n_head
+        self.sa  = MultiHeadAttention(n_head, head_size)
         self.ff  = FeedForward()
         self.ln1 = nn.LayerNorm(n_embd)
         self.ln2 = nn.LayerNorm(n_embd)
+
     def forward(self, x):
         x = x + self.sa(self.ln1(x))
         return x + self.ff(self.ln2(x))
@@ -59,7 +68,7 @@ class TinyLLM(nn.Module):
         super().__init__()
         self.token_emb = nn.Embedding(vocab_size, n_embd)
         self.pos_emb   = nn.Embedding(block_size, n_embd)
-        self.blocks    = nn.Sequential(*[Block(vocab_size) for _ in range(n_layer)])
+        self.blocks    = nn.Sequential(*[Block() for _ in range(n_layer)])
         self.ln_f      = nn.LayerNorm(n_embd)
         self.lm_head   = nn.Linear(n_embd, vocab_size)
 
@@ -71,8 +80,8 @@ class TinyLLM(nn.Module):
         logits = self.lm_head(x)
         loss = None
         if targets is not None:
-            B,T,C = logits.shape
-            loss = F.cross_entropy(logits.view(B*T,C), targets.view(B*T))
+            B, T, C = logits.shape
+            loss = F.cross_entropy(logits.view(B*T, C), targets.view(B*T))
         return logits, loss
 
     def generate(self, idx, max_new_tokens, temperature=0.8):
