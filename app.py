@@ -23,7 +23,7 @@ def load_model():
 
     model = TinyLLM(vocab["vocab_size"])
     model.load_state_dict(
-        torch.load("tinyllm.pt", map_location="cpu", weights_only=True)
+        torch.load("tinyllm.pt", map_location="cpu", weights_only=False)
     )
     model.eval()
     return model, vocab
